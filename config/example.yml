@@ -1,0 +1,10 @@
+logger:
+  level: "info"
+
+runner:
+  name: "my-awesome-gitlab-runner"
+  url: "https://gitlab.com/"
+  token: "insert after registration!"
+  executor: "shell"
+  tags:
+    - "mytag"

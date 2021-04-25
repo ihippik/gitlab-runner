@@ -1,0 +1,27 @@
+---
+
+# Reference:
+#   https://golangci-lint.run/usage/configuration/
+
+run:
+  concurrency: 1
+  timeout: 5m
+  skip-dirs:
+    - .gitlab/
+
+linters:
+  enable-all: true
+  disable:
+     - godox
+     - gochecknoglobals
+
+linters-settings:
+  golint:
+    min-confidence: 0.8
+
+  goimports:
+    local-prefixes: github.com/ihippik/gitlab-runner
+
+issues:
+  include:
+    - EXC0002
