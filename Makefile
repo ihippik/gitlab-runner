@@ -1,4 +1,4 @@
-.PHONY: tools build imports test lint bench vet fmt code_style check help
+.PHONY: tools buildRemove  test lint bench vet fmt code_style check help
 GOPATH:=$(shell go env GOPATH)
 TMPDIR ?= $(shell dirname $$(mktemp -u))
 PACKAGE = gitlab-runner
