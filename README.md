@@ -1,5 +1,6 @@
 ![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)
 ![GitHub go.mod Go version](https://img.shields.io/github/go-mod/go-version/ihippik/gitlab-runner)
+![GitHub last commit](https://img.shields.io/github/last-commit/ihippik/gitlab-runner)
 
 
 # Gitlab runner
