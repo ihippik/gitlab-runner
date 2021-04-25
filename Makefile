@@ -14,9 +14,6 @@ tools: $(GOLANGCI)
 build:
 	CGO_ENABLED=0 GOOS=linux go build -ldflags="-X 'main.GITVersion=$(GIT_VERSION)'" -a -installsuffix cgo ./cmd/$(PACKAGE)
 
-imports: $(GOIMPORTS) ## Check and fix import section by import rules
-	test -z $$(for d in $$(go list -f {{.Dir}} ./...); do goimports -e -l -local $(NAMESPACE) -w $$d/*.go; done)
-
 test: ## Run unit (short) tests
 	go test -short ./... -coverprofile=$(COVER_FILE)
 	go tool cover -func=$(COVER_FILE) | grep ^total
