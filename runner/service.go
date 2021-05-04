@@ -41,7 +41,13 @@ type Service struct {
 
 // NewService create new Service instance.
 func NewService(logger *logrus.Entry, config *config.Config, gitlab gitlabAPI, executor Executor) *Service {
-	return &Service{logger: logger, config: config, gitlab: gitlab, executor: executor}
+	return &Service{
+		logger:   logger,
+		config:   config,
+		gitlab:   gitlab,
+		executor: executor,
+		errChan:  make(chan error, 1),
+	}
 }
 
 // Registration register new gitlab-runner in Gitlab.
