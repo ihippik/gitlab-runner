@@ -2,6 +2,7 @@ package runner
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -25,7 +26,7 @@ func NewGitlabAPI(client *http.Client, base string) *GitlabAPI {
 }
 
 // register register new gitlab-runner.
-func (g GitlabAPI) register(token string, cfg *config.RunnerCfg) (string, error) {
+func (g GitlabAPI) register(ctx context.Context, token string, cfg *config.RunnerCfg) (string, error) {
 	var regResponse struct {
 		ID    int    `json:"id"`
 		Token string `json:"token"`
@@ -36,7 +37,7 @@ func (g GitlabAPI) register(token string, cfg *config.RunnerCfg) (string, error)
 	form.Add("description", cfg.Name)
 	form.Add("tag_list", strings.Join(cfg.Tags, ", "))
 
-	req, err := http.NewRequest("POST", g.basePath+"/runners", strings.NewReader(form.Encode()))
+	req, err := http.NewRequestWithContext(ctx, "POST", g.basePath+"/runners", strings.NewReader(form.Encode()))
 	if err != nil {
 		return "", fmt.Errorf("new request: %w", err)
 	}
@@ -67,7 +68,7 @@ func (g GitlabAPI) register(token string, cfg *config.RunnerCfg) (string, error)
 }
 
 // jobRequest fetch jobs from Gitlab server.
-func (g GitlabAPI) jobRequest(jReq *jobRequest) (*jobResponse, error) {
+func (g GitlabAPI) jobRequest(ctx context.Context, jReq *jobRequest) (*jobResponse, error) {
 	var jobRequest jobResponse
 
 	reqData, err := json.Marshal(jReq)
@@ -75,7 +76,7 @@ func (g GitlabAPI) jobRequest(jReq *jobRequest) (*jobResponse, error) {
 		return nil, fmt.Errorf("marshal request: %w", err)
 	}
 
-	req, err := http.NewRequest("POST", g.basePath+"/jobs/request", bytes.NewReader(reqData))
+	req, err := http.NewRequestWithContext(ctx, "POST", g.basePath+"/jobs/request", bytes.NewReader(reqData))
 	if err != nil {
 		return nil, fmt.Errorf("new request: %w", err)
 	}
@@ -113,10 +114,10 @@ func (g GitlabAPI) jobRequest(jReq *jobRequest) (*jobResponse, error) {
 	return &jobRequest, nil
 }
 
-func (g GitlabAPI) jobTrace(startOffset, jobID int, jobToken string, content []byte) (int, error) {
+func (g GitlabAPI) jobTrace(ctx context.Context, startOffset, jobID int, jobToken string, content []byte) (int, error) {
 	traceURL := fmt.Sprintf("%s/jobs/%d/trace", g.basePath, jobID)
 
-	req, err := http.NewRequest("PATCH", traceURL, bytes.NewReader(content))
+	req, err := http.NewRequestWithContext(ctx, "PATCH", traceURL, bytes.NewReader(content))
 	if err != nil {
 		return 0, fmt.Errorf("new request: %w", err)
 	}
@@ -143,7 +144,7 @@ func (g GitlabAPI) jobTrace(startOffset, jobID int, jobToken string, content []b
 	return endOffset, nil
 }
 
-func (g GitlabAPI) updateJob(jobID int, request *updateJobRequest) error {
+func (g GitlabAPI) updateJob(ctx context.Context, jobID int, request *updateJobRequest) error {
 	data, err := json.Marshal(request)
 	if err != nil {
 		return fmt.Errorf("marshal request: %w", err)
@@ -151,7 +152,7 @@ func (g GitlabAPI) updateJob(jobID int, request *updateJobRequest) error {
 
 	updateURL := fmt.Sprintf("%s/jobs/%d", g.basePath, jobID)
 
-	req, err := http.NewRequest("PUT", updateURL, bytes.NewReader(data))
+	req, err := http.NewRequestWithContext(ctx, "PUT", updateURL, bytes.NewReader(data))
 	if err != nil {
 		return fmt.Errorf("new request: %w", err)
 	}

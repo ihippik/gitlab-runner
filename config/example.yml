@@ -6,5 +6,6 @@ runner:
   url: "https://gitlab.com/"
   token: "insert after registration!"
   executor: "shell"
+  interval: "5s"
   tags:
     - "mytag"

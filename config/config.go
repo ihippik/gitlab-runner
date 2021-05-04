@@ -1,24 +1,27 @@
 // Package config provides configuration service structure and utilities.
 package config
 
+import "time"
+
 type (
 	// Config represent service config.
 	Config struct {
-		Runner *RunnerCfg `json:"gitlab-runner"`
-		Logger *LoggerCfg `json:"logger"`
+		Runner *RunnerCfg
+		Logger *LoggerCfg
 	}
 
 	// RunnerCfg gitlab-runner config section.
 	RunnerCfg struct {
-		Name     string   `json:"name,omitempty"`
-		URL      string   `json:"url,omitempty"`
-		Token    string   `json:"token,omitempty"`
-		Executor string   `json:"executor,omitempty"`
-		Tags     []string `json:"tags"`
+		Name     string
+		URL      string
+		Token    string
+		Executor string
+		Tags     []string
+		Interval time.Duration
 	}
 
 	// LoggerCfg logger config section.
 	LoggerCfg struct {
-		Level string `json:"level,omitempty"`
+		Level string
 	}
 )

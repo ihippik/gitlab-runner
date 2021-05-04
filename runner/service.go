@@ -2,7 +2,12 @@
 package runner
 
 import (
+	"context"
 	"fmt"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/sirupsen/logrus"
 
@@ -16,10 +21,10 @@ type Executor interface {
 
 // gitlabAPI presents an interface for working with tasks through API Gitlab.
 type gitlabAPI interface {
-	register(token string, cfg *config.RunnerCfg) (string, error)
-	jobRequest(*jobRequest) (*jobResponse, error)
-	updateJob(int, *updateJobRequest) error
-	jobTrace(startOffset, jobID int, jobToken string, content []byte) (int, error)
+	register(ctx context.Context, token string, cfg *config.RunnerCfg) (string, error)
+	jobRequest(ctx context.Context, req *jobRequest) (*jobResponse, error)
+	updateJob(ctx context.Context, id int, req *updateJobRequest) error
+	jobTrace(ctx context.Context, startOffset, jobID int, jobToken string, content []byte) (int, error)
 }
 
 // Service represent main service struct.
@@ -30,6 +35,7 @@ type Service struct {
 	gitlab   gitlabAPI
 	executor Executor
 
+	errChan     chan error
 	traceOffset int
 }
 
@@ -39,8 +45,8 @@ func NewService(logger *logrus.Entry, config *config.Config, gitlab gitlabAPI, e
 }
 
 // Registration register new gitlab-runner in Gitlab.
-func (s *Service) Registration(token string) (string, error) {
-	runnerToken, err := s.gitlab.register(token, s.config.Runner)
+func (s *Service) Registration(ctx context.Context, token string) (string, error) {
+	runnerToken, err := s.gitlab.register(ctx, token, s.config.Runner)
 	if err != nil {
 		return "", fmt.Errorf("register gitlab-runner: %w", err)
 	}
@@ -48,26 +54,52 @@ func (s *Service) Registration(token string) (string, error) {
 	return runnerToken, nil
 }
 
-// Start run main Gitlab-gitlab-runner process.
-func (s *Service) Start() error {
+// Process run main Gitlab-gitlab-runner process.
+func (s *Service) Process(ctx context.Context) error {
 	if len(s.config.Runner.Token) == 0 {
 		logrus.Warnln("first register and insert the token into the config")
+
 		return nil
 	}
 
 	s.logger.WithField("name", s.config.Runner.Name).Infoln("gitlab-runner was started")
 
+	ctx, cancel := context.WithCancel(ctx)
+	jobTicker := time.NewTicker(s.config.Runner.Interval)
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+
+LOOP:
+	for {
+		select {
+		case <-jobTicker.C:
+			go s.processJob(ctx)
+		case err := <-s.errChan:
+			s.logger.Errorln(err)
+		case <-sigs:
+			cancel()
+			s.logger.Debugln("received terminate signal")
+			break LOOP
+		}
+	}
+
+	s.logger.Infoln("let the force be with you")
+
+	return nil
+}
+
+func (s *Service) processJob(ctx context.Context) {
 	// if job received status changed from pending to running
-	job, err := s.gitlab.jobRequest(&jobRequest{
-		Token: s.config.Runner.Token,
-	})
+	job, err := s.gitlab.jobRequest(ctx, &jobRequest{Token: s.config.Runner.Token})
 	if err != nil {
-		return fmt.Errorf("job request: %w", err)
+		s.errChan <- fmt.Errorf("job request: %w", err)
+
+		return
 	}
 
 	if job == nil {
 		s.logger.Debugln("no job")
-		return nil
+		return
 	}
 
 	s.logger.WithFields(logrus.Fields{
@@ -77,41 +109,40 @@ func (s *Service) Start() error {
 	}).Infoln("get job")
 
 	helloStr := fmt.Sprintf("Runner %s%s%s greets you!\n", ansiBoldBlue, s.config.Runner.Name, ansiReset)
-	s.trace(helloStr, job)
+	s.trace(ctx, helloStr, job)
 
-	s.trace("I'm getting started.\n", job)
+	s.trace(ctx, "I'm getting started.\n", job)
 
-	if err := s.process(job); err != nil {
-		if err := s.jobFailed(job); err != nil {
-			return fmt.Errorf("job failed: %w", err)
+	if err := s.process(ctx, job); err != nil {
+		if err := s.jobFailed(ctx, job); err != nil {
+			s.errChan <- fmt.Errorf("job failed: %w", err)
 		}
 
-		return fmt.Errorf("job process: %w", err)
+		s.errChan <- fmt.Errorf("job process: %w", err)
 	}
 
-	if err := s.jobFinished(job); err != nil {
-		return fmt.Errorf("job finished: %w", err)
+	if err := s.jobFinished(ctx, job); err != nil {
+		s.errChan <- fmt.Errorf("job finished: %w", err)
 	}
-
-	return nil
 }
 
 // trace add job trace.
-func (s *Service) trace(message string, job *jobResponse) {
+func (s *Service) trace(ctx context.Context, message string, job *jobResponse) {
 	var err error
 
-	s.traceOffset, err = s.gitlab.jobTrace(s.traceOffset, job.ID, job.Token, []byte(message))
+	s.traceOffset, err = s.gitlab.jobTrace(ctx, s.traceOffset, job.ID, job.Token, []byte(message))
 	if err != nil {
 		s.logger.WithError(err).Errorln("job trace error")
 	}
 }
 
 // jobFinished set job success state.
-func (s *Service) jobFinished(job *jobResponse) error {
+func (s *Service) jobFinished(ctx context.Context, job *jobResponse) error {
 	succeeded := fmt.Sprintf("%sJob succeeded!%s", ansiBoldGreen, ansiReset)
-	s.trace(succeeded, job)
+	s.trace(ctx, succeeded, job)
 
 	if err := s.gitlab.updateJob(
+		ctx,
 		job.ID,
 		&updateJobRequest{
 			Token:    job.Token,
@@ -128,8 +159,9 @@ func (s *Service) jobFinished(job *jobResponse) error {
 }
 
 // jobFailed set job failed state.
-func (s *Service) jobFailed(job *jobResponse) error {
+func (s *Service) jobFailed(ctx context.Context, job *jobResponse) error {
 	if err := s.gitlab.updateJob(
+		ctx,
 		job.ID,
 		&updateJobRequest{
 			Token:         job.Token,
@@ -147,7 +179,7 @@ func (s *Service) jobFailed(job *jobResponse) error {
 }
 
 // process processes all steps of the job.
-func (s *Service) process(job *jobResponse) error {
+func (s *Service) process(ctx context.Context, job *jobResponse) error {
 	for _, step := range job.Steps {
 		for _, script := range step.Script {
 			output, err := s.executor.Execute(script)
@@ -156,7 +188,7 @@ func (s *Service) process(job *jobResponse) error {
 			}
 
 			traceStep := fmt.Sprintf("%s%s%s: %s\n", ansiBoldYellow, step.Name, ansiReset, output)
-			s.trace(traceStep, job)
+			s.trace(ctx, traceStep, job)
 		}
 
 		s.logger.WithFields(

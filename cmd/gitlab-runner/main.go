@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"os"
@@ -22,6 +23,7 @@ func main() {
 		logger *logrus.Entry
 	)
 
+	ctx := context.Background()
 	app := &cli.App{
 		Name:    "GitLab Runner",
 		Usage:   "a GitLab Runner",
@@ -54,7 +56,7 @@ func main() {
 				},
 				Action: func(c *cli.Context) error {
 					regToken := c.String("token")
-					token, err := srv.Registration(regToken)
+					token, err := srv.Registration(ctx, regToken)
 					if err != nil {
 						return fmt.Errorf("registration: %w", err)
 					}
@@ -66,10 +68,7 @@ func main() {
 			},
 		},
 		Action: func(c *cli.Context) error {
-			if err := srv.Start(); err != nil {
-				return fmt.Errorf("start: %w", err)
-			}
-			return nil
+			return srv.Process(ctx)
 		},
 	}
 	err := app.Run(os.Args)
