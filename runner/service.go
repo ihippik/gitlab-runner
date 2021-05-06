@@ -16,7 +16,7 @@ import (
 
 // Executor implementation of workers to perform jobs.
 type Executor interface {
-	Execute(command string) (string, error)
+	Execute(ctx context.Context, command string) (string, error)
 }
 
 // gitlabAPI presents an interface for working with tasks through API Gitlab.
@@ -116,15 +116,16 @@ func (s *Service) processJob(ctx context.Context) {
 
 	helloStr := fmt.Sprintf("Runner %s%s%s greets you!\n", ansiBoldBlue, s.config.Runner.Name, ansiReset)
 	s.trace(ctx, helloStr, job)
-
 	s.trace(ctx, "I'm getting started.\n", job)
 
 	if err := s.process(ctx, job); err != nil {
 		if err := s.jobFailed(ctx, job); err != nil {
-			s.errChan <- fmt.Errorf("job failed: %w", err)
+			s.errChan <- fmt.Errorf("process: job failed: %w", err)
+			return
 		}
 
 		s.errChan <- fmt.Errorf("job process: %w", err)
+		return
 	}
 
 	if err := s.jobFinished(ctx, job); err != nil {
@@ -188,7 +189,7 @@ func (s *Service) jobFailed(ctx context.Context, job *jobResponse) error {
 func (s *Service) process(ctx context.Context, job *jobResponse) error {
 	for _, step := range job.Steps {
 		for _, script := range step.Script {
-			output, err := s.executor.Execute(script)
+			output, err := s.executor.Execute(ctx, script)
 			if err != nil {
 				return fmt.Errorf("%s: %w", step.Name, err)
 			}
