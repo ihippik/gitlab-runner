@@ -10,10 +10,25 @@ type (
 	}
 
 	jobResponse struct {
-		ID            int    `json:"id"`
-		Token         string `json:"token"`
-		AllowGitFetch bool   `json:"allow_git_fetch"`
-		Steps         []step `json:"steps"`
+		ID            int          `json:"id"`
+		Token         string       `json:"token"`
+		AllowGitFetch bool         `json:"allow_git_fetch"`
+		Variables     jobVariables `json:"variables"`
+		GitInfo       JobGitInfo   `json:"git_info"`
+		Steps         []step       `json:"steps"`
+	}
+
+	JobGitInfo struct {
+		RepoURL string `json:"repo_url"`
+	}
+
+	jobVariables []jobVariable
+
+	jobVariable struct {
+		Key    string `json:"key"`
+		Value  string `json:"value"`
+		Public bool   `json:"public"`
+		Masked bool   `json:"masked"`
 	}
 
 	jobRequest struct {
@@ -74,3 +89,14 @@ type (
 		Bytesize int    `json:"bytesize,omitempty"`
 	}
 )
+
+// Get find job variable with specified key.
+func (v jobVariables) Get(key string) (string, bool) {
+	for _, job := range v {
+		if job.Key == key {
+			return job.Value, true
+		}
+	}
+
+	return "", false
+}
