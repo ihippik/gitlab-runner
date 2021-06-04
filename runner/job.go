@@ -9,16 +9,35 @@ type (
 		AllowFailure bool     `json:"allow_failure"`
 	}
 
+	artifact struct {
+		Untracked bool     `json:"untracked"`
+		Paths     []string `json:"paths"`
+		Exclude   []string `json:"exclude"`
+		When      string   `json:"when"`
+
+		artifactsOptions
+	}
+
+	artifactFormat string
+
+	artifactsOptions struct {
+		Name     string         `json:"name"`
+		Type     string         `json:"artifact_type"`
+		Format   artifactFormat `json:"artifact_format"`
+		ExpireIn string         `json:"expire_in"`
+	}
+
 	jobResponse struct {
 		ID            int          `json:"id"`
 		Token         string       `json:"token"`
 		AllowGitFetch bool         `json:"allow_git_fetch"`
 		Variables     jobVariables `json:"variables"`
-		GitInfo       JobGitInfo   `json:"git_info"`
+		GitInfo       jobGitInfo   `json:"git_info"`
 		Steps         []step       `json:"steps"`
+		Artifacts     []artifact   `json:"artifacts"`
 	}
 
-	JobGitInfo struct {
+	jobGitInfo struct {
 		RepoURL string `json:"repo_url"`
 	}
 

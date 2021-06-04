@@ -12,6 +12,15 @@ type GitlabAPIMock struct {
 	mock.Mock
 }
 
+func (g *GitlabAPIMock) uploadArtifacts(
+	ctx context.Context,
+	id int,
+	token, path string,
+	options artifactsOptions,
+) error {
+	panic("implement me")
+}
+
 func (g *GitlabAPIMock) register(ctx context.Context, token string, cfg *config.RunnerCfg) (string, error) {
 	args := g.Called(ctx, token, cfg)
 	return args.String(0), args.Error(1)

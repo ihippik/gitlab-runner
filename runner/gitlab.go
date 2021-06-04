@@ -6,9 +6,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
+	"mime/multipart"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 
 	"github.com/ihippik/gitlab-runner/config"
@@ -37,7 +40,7 @@ func (g GitlabAPI) register(ctx context.Context, token string, cfg *config.Runne
 	form.Add("description", cfg.Name)
 	form.Add("tag_list", strings.Join(cfg.Tags, ", "))
 
-	req, err := http.NewRequestWithContext(ctx, "POST", g.basePath+"/runners", strings.NewReader(form.Encode()))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, g.basePath+"/runners", strings.NewReader(form.Encode()))
 	if err != nil {
 		return "", fmt.Errorf("new request: %w", err)
 	}
@@ -76,7 +79,7 @@ func (g GitlabAPI) jobRequest(ctx context.Context, jReq *jobRequest) (*jobRespon
 		return nil, fmt.Errorf("marshal request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "POST", g.basePath+"/jobs/request", bytes.NewReader(reqData))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, g.basePath+"/jobs/request", bytes.NewReader(reqData))
 	if err != nil {
 		return nil, fmt.Errorf("new request: %w", err)
 	}
@@ -117,7 +120,7 @@ func (g GitlabAPI) jobRequest(ctx context.Context, jReq *jobRequest) (*jobRespon
 func (g GitlabAPI) jobTrace(ctx context.Context, startOffset, jobID int, jobToken string, content []byte) (int, error) {
 	traceURL := fmt.Sprintf("%s/jobs/%d/trace", g.basePath, jobID)
 
-	req, err := http.NewRequestWithContext(ctx, "PATCH", traceURL, bytes.NewReader(content))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPatch, traceURL, bytes.NewReader(content))
 	if err != nil {
 		return 0, fmt.Errorf("new request: %w", err)
 	}
@@ -152,7 +155,7 @@ func (g GitlabAPI) updateJob(ctx context.Context, jobID int, request *updateJobR
 
 	updateURL := fmt.Sprintf("%s/jobs/%d", g.basePath, jobID)
 
-	req, err := http.NewRequestWithContext(ctx, "PUT", updateURL, bytes.NewReader(data))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, updateURL, bytes.NewReader(data))
 	if err != nil {
 		return fmt.Errorf("new request: %w", err)
 	}
@@ -169,6 +172,76 @@ func (g GitlabAPI) updateJob(ctx context.Context, jobID int, request *updateJobR
 	}
 
 	if resp.StatusCode > http.StatusAccepted {
+		return fmt.Errorf("bad status: %s", resp.Status)
+	}
+
+	return nil
+}
+
+func (g GitlabAPI) uploadArtifacts(ctx context.Context, jobID int, token, path string, options artifactsOptions) error {
+	file, err := os.Open(path)
+	if err != nil {
+		return fmt.Errorf("file open: %w", err)
+	}
+
+	fi, err := file.Stat()
+	if err != nil {
+		return fmt.Errorf("file stat: %w", err)
+	}
+
+	if err := file.Close(); err != nil {
+		return fmt.Errorf("close file: %w", err)
+	}
+
+	body := new(bytes.Buffer)
+	writer := multipart.NewWriter(body)
+
+	part, err := writer.CreateFormFile("file", fi.Name())
+	if err != nil {
+		return fmt.Errorf("create form file: %w", err)
+	}
+
+	if _, err = io.Copy(part, file); err != nil {
+		return fmt.Errorf("copy error: %w", err)
+	}
+
+	if err = writer.Close(); err != nil {
+		return fmt.Errorf("close writer: %w", err)
+	}
+
+	q := url.Values{}
+
+	if options.ExpireIn != "" {
+		q.Set("expire_in", options.ExpireIn)
+	}
+
+	if options.Format != "" {
+		q.Set("artifact_format", string(options.Format))
+	}
+
+	if options.Type != "" {
+		q.Set("artifact_type", options.Type)
+	}
+
+	uploadURL := fmt.Sprintf("%s/jobs/%d/artifacts?%s", g.basePath, jobID, q.Encode())
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, uploadURL, body)
+	if err != nil {
+		return fmt.Errorf("new request: %w", err)
+	}
+
+	headers := make(http.Header)
+	headers.Set("JOB-TOKEN", token)
+	headers.Set("Content-Type", writer.FormDataContentType())
+	req.Header = headers
+
+	resp, err := g.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("do request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode > http.StatusNoContent {
 		return fmt.Errorf("bad status: %s", resp.Status)
 	}
 

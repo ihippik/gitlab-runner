@@ -14,6 +14,9 @@ linters:
   disable:
      - godox
      - gochecknoglobals
+     - scopelint
+     - funlen
+     - testpackage
 
 linters-settings:
   golint:

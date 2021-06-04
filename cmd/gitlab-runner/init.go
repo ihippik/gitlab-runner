@@ -46,6 +46,7 @@ func initConfig(path string) (*config.Config, error) {
 
 func executorFactory(logger *logrus.Entry, kind string) runner.Executor {
 	const executorKindShell = "shell"
+
 	switch kind {
 	case executorKindShell:
 		return executor.NewShellExecutor()
