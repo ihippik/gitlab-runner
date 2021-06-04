@@ -188,10 +188,7 @@ func (g GitlabAPI) uploadArtifacts(ctx context.Context, jobID int, token, path s
 	if err != nil {
 		return fmt.Errorf("file stat: %w", err)
 	}
-
-	if err := file.Close(); err != nil {
-		return fmt.Errorf("close file: %w", err)
-	}
+	defer file.Close()
 
 	body := new(bytes.Buffer)
 	writer := multipart.NewWriter(body)
